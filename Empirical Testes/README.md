@@ -1,3 +1,0 @@
-## Empirical tests
-
-...
