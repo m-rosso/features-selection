@@ -27,12 +27,17 @@ cf.go_offline()
 ####################################################################################################################################
 # Function that splits data into train and test set:
 
-def train_test_split(dataframe, test_ratio=0.5, shuffle=False, seed=None):
+def train_test_split(dataframe, preserve_date=False, date_var='date', test_ratio=0.5, shuffle=False, seed=None):
     """
     Function that splits data into train and test set.
     
     :param dataframe: complete set of data.
     :type dataframe: dataframe.
+    :param preserve_date: indicates whether to perform split based on volume of data, but not mingling instances
+    from the same date.
+    :type preserve_date: boolean.
+    :param date_var: name of the date variable to consider during the split.
+    :type date_var: string.
     :param seed: seed for shuffle.
     :type seed: integer.
     :param test_ratio: proportion of data to be allocated into test set.
@@ -49,13 +54,31 @@ def train_test_split(dataframe, test_ratio=0.5, shuffle=False, seed=None):
     if shuffle:
         df = df.sample(len(df), random_state=seed)
     
-    # Indexes for training and test data:
-    test_indexes = [True if i > int(len(df)*(1 - 0.25)) else False for i in range(len(df))]
-    train_indexes = [True if i==False else False for i in test_indexes]
+    if preserve_date:
+        # Number of instances by date:
+        orders_by_date = pd.DataFrame(data={
+            'date': df.date.apply(lambda x: x.date()).value_counts().index,
+            'freq': df.date.apply(lambda x: x.date()).value_counts().values}).sort_values('date')
+
+        # Accumulated number of instances by date:
+        orders_by_date['acum'] = np.cumsum(orders_by_date.freq)
+        orders_by_date['acum_share'] = [a/orders_by_date['acum'].max() for a in orders_by_date['acum']]
+
+        # Date gathering 1 - test_ratio of data:
+        last_date_train = orders_by_date.iloc[np.argmin(abs(orders_by_date['acum_share'] - (1 - test_ratio)))]['date']
+
+        # Train-test split:
+        df_test = df[df.date.apply(lambda x: x.date()) > last_date_train]
+        df_train = df[df.date.apply(lambda x: x.date()) <= last_date_train]
     
-    # Train-test split:
-    df_train = df.iloc[train_indexes, :]
-    df_test = df.iloc[test_indexes, :]
+    else:
+        # Indexes for training and test data:
+        test_indexes = [True if i > int(len(df)*(1 - test_ratio)) else False for i in range(len(df))]
+        train_indexes = [True if i==False else False for i in test_indexes]
+
+        # Train-test split:
+        df_train = df.iloc[train_indexes, :]
+        df_test = df.iloc[test_indexes, :]
     
     return (df_train, df_test)
 
